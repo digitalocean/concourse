@@ -7,6 +7,6 @@ ROOT=$(cd $(dirname $0)/.. && pwd)
 DEVDIR=/tmp/concourse-dev
 DBDIR=$DEVDIR/db
 
-[ -d $DBDIR ] || initdb -U postgres -D $DBDIR -E UTF8 --no-local
+[ -d $DBDIR ] || sudo -u postgres /usr/lib/postgresql/9.3/bin/initdb -U postgres -D $DBDIR -E UTF8 --no-local
 
-exec postgres -D $DBDIR -h 127.0.0.1 -p ${POSTGRES_PORT:-6543} "$@"
+exec sudo -u postgres /usr/lib/postgresql/9.3/bin/postgres -D $DBDIR -h 0.0.0.0 -p ${POSTGRES_PORT:-6543} "$@"

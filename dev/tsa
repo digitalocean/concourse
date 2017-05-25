@@ -13,9 +13,9 @@ export PATH=$ROOT/bin:$PATH
 go install github.com/concourse/tsa/cmd/tsa
 
 exec tsa \
-  --atc-url http://127.0.0.1:8080 \
+  --atc-url http://0.0.0.0:8080 \
   --host-key $KEYSDIR/web/tsa_host_key \
-  --peer-ip 127.0.0.1 \
+  --peer-ip 0.0.0.0 \
   --authorized-keys $KEYSDIR/web/authorized_worker_keys \
   --session-signing-key $KEYSDIR/web/session_signing_key \
   "$@"

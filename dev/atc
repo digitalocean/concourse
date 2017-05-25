@@ -16,7 +16,7 @@ pg_port=${POSTGRES_PORT:-6543}
 external_ip="$($ROOT/dev/util/external-ip)"
 echo $external_ip
 
-until createdb -U postgres -p ${pg_port} atc 2>&1 | grep 'already exists' >/dev/null; do
+until /usr/lib/postgresql/9.3/bin/createdb -U postgres -p ${pg_port} atc 2>&1 | grep 'already exists' >/dev/null; do
   echo creating database...
   sleep 1
 done
@@ -24,7 +24,7 @@ done
 atc \
   --no-really-i-dont-want-any-auth \
   --log-level debug \
-  --external-url "http://127.0.0.1:8080" \
+  --external-url "http://0.0.0.0:8080" \
   --session-signing-key $KEYSDIR/web/session_signing_key \
   --postgres-data-source "user=postgres dbname=atc port=${pg_port} sslmode=disable" \
   "$@"

@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
 	"go.opentelemetry.io/otel/api/trace"
-	"go.opentelemetry.io/otel/api/trace/testtrace"
+	"go.opentelemetry.io/otel/api/trace/tracetest"
 
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
@@ -39,10 +39,10 @@ var _ = Describe("PutStep", func() {
 		fakeResourceConfigFactory *dbfakes.FakeResourceConfigFactory
 		fakeDelegate              *execfakes.FakePutDelegate
 		putPlan                   *atc.PutPlan
-
-		fakeArtifact        *runtimefakes.FakeArtifact
-		fakeOtherArtifact   *runtimefakes.FakeArtifact
-		fakeMountedArtifact *runtimefakes.FakeArtifact
+		spanCtx                   context.Context
+		fakeArtifact              *runtimefakes.FakeArtifact
+		fakeOtherArtifact         *runtimefakes.FakeArtifact
+		fakeMountedArtifact       *runtimefakes.FakeArtifact
 
 		interpolatedResourceTypes atc.VersionedResourceTypes
 
@@ -322,14 +322,20 @@ var _ = Describe("PutStep", func() {
 		var buildSpan trace.Span
 
 		BeforeEach(func() {
-			tracing.ConfigureTraceProvider(testTraceProvider{})
-			ctx, buildSpan = tracing.StartSpan(ctx, "build", nil)
+			tracing.ConfigureTraceProvider(tracetest.NewProvider())
+
+			spanCtx, buildSpan = tracing.StartSpan(ctx, "build", nil)
+			fakeDelegate.StartSpanReturns(spanCtx, buildSpan)
+		})
+
+		AfterEach(func() {
+			tracing.Configured = false
 		})
 
 		It("propagates span context to the worker client", func() {
 			ctx, _, _, _, _, _, _, _, _, _, _ := fakeClient.RunPutStepArgsForCall(0)
-			span, ok := tracing.FromContext(ctx).(*testtrace.Span)
-			Expect(ok).To(BeTrue(), "no testtrace.Span in context")
+			span, ok := tracing.FromContext(ctx).(*tracetest.Span)
+			Expect(ok).To(BeTrue(), "no tracetest.Span in context")
 			Expect(span.ParentSpanID()).To(Equal(buildSpan.SpanContext().SpanID))
 		})
 
@@ -386,7 +392,7 @@ var _ = Describe("PutStep", func() {
 		Expect(actualSource).To(Equal(atc.Source{"some": "super-secret-source"}))
 		Expect(actualResourceTypes).To(Equal(interpolatedResourceTypes))
 		Expect(info.Version).To(Equal(atc.Version{"some": "version"}))
-		Expect(info.Metadata).To(Equal([]atc.MetadataField{{"some", "metadata"}}))
+		Expect(info.Metadata).To(Equal([]atc.MetadataField{{Name: "some", Value: "metadata"}}))
 	})
 
 	Context("when the step.Plan.Resource is blank", func() {

@@ -15,9 +15,8 @@ import (
 	"github.com/concourse/concourse/tracing"
 	"github.com/concourse/concourse/vars"
 	"github.com/concourse/concourse/vars/varsfakes"
-	"go.opentelemetry.io/otel/api/propagators"
 	"go.opentelemetry.io/otel/api/trace"
-	"go.opentelemetry.io/otel/api/trace/testtrace"
+	"go.opentelemetry.io/otel/api/trace/tracetest"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -36,6 +35,7 @@ var _ = Describe("CheckStep", func() {
 		fakeStrategy        *workerfakes.FakeContainerPlacementStrategy
 		fakeDelegate        *execfakes.FakeCheckDelegate
 		fakeClient          *workerfakes.FakeClient
+		spanCtx             context.Context
 
 		stepMetadata      exec.StepMetadata
 		checkStep         *exec.CheckStep
@@ -240,14 +240,14 @@ var _ = Describe("CheckStep", func() {
 				var buildSpan trace.Span
 
 				BeforeEach(func() {
-					tracing.ConfigureTraceProvider(testTraceProvider{})
+					tracing.ConfigureTraceProvider(tracetest.NewProvider())
 					ctx, buildSpan = tracing.StartSpan(ctx, "lidar", nil)
 				})
 
 				It("propagates span context to the worker client", func() {
 					ctx, _, _, _, _, _, _, _, _, _ := fakeClient.RunCheckStepArgsForCall(0)
-					span, ok := tracing.FromContext(ctx).(*testtrace.Span)
-					Expect(ok).To(BeTrue(), "no testtrace.Span in context")
+					span, ok := tracing.FromContext(ctx).(*tracetest.Span)
+					Expect(ok).To(BeTrue(), "no tracetest.Span in context")
 					Expect(span.ParentSpanID()).To(Equal(buildSpan.SpanContext().SpanID))
 				})
 
@@ -255,8 +255,27 @@ var _ = Describe("CheckStep", func() {
 					Expect(containerSpec.Env).To(ContainElement(MatchRegexp(`TRACEPARENT=.+`)))
 				})
 
-				AfterEach(func() {
-					tracing.Configured = false
+				Context("when tracing is enabled", func() {
+					var buildSpan trace.Span
+
+					BeforeEach(func() {
+						tracing.ConfigureTraceProvider(tracetest.NewProvider())
+
+						spanCtx, buildSpan = tracing.StartSpan(ctx, "build", nil)
+						fakeDelegate.StartSpanReturns(spanCtx, buildSpan)
+					})
+
+					AfterEach(func() {
+						tracing.Configured = false
+					})
+
+					It("propagates span context to the worker client", func() {
+						Expect(runCtx).To(Equal(spanCtx))
+					})
+
+					It("populates the TRACEPARENT env var", func() {
+						Expect(containerSpec.Env).To(ContainElement(MatchRegexp(`TRACEPARENT=.+`)))
+					})
 				})
 			})
 		})
@@ -288,9 +307,27 @@ var _ = Describe("CheckStep", func() {
 			})
 		})
 
-		It("uses container placement strategy", func() {
-			_, _, _, _, _, strategy, _, _, _, _ := fakeClient.RunCheckStepArgsForCall(0)
-			Expect(strategy).To(Equal(fakeStrategy))
+		Context("with tracing configured", func() {
+			var buildSpan trace.Span
+
+			BeforeEach(func() {
+				tracing.ConfigureTraceProvider(tracetest.NewProvider())
+
+				spanCtx, buildSpan = tracing.StartSpan(context.Background(), "fake-operation", nil)
+				fakeDelegate.StartSpanReturns(spanCtx, buildSpan)
+			})
+
+			AfterEach(func() {
+				tracing.Configured = false
+			})
+
+			It("propagates span context to scope", func() {
+				Expect(fakeResourceConfigScope.SaveVersionsCallCount()).To(Equal(1))
+				spanContext, _ := fakeResourceConfigScope.SaveVersionsArgsForCall(0)
+				traceID := buildSpan.SpanContext().TraceID.String()
+				traceParent := spanContext.Get("traceparent")
+				Expect(traceParent).To(ContainSubstring(traceID))
+			})
 		})
 
 		It("uses container metadata", func() {
@@ -321,7 +358,7 @@ var _ = Describe("CheckStep", func() {
 			var span trace.Span
 
 			BeforeEach(func() {
-				tracing.ConfigureTraceProvider(&tracing.TestTraceProvider{})
+				tracing.ConfigureTraceProvider(tracetest.NewProvider())
 				ctx, span = tracing.StartSpan(context.Background(), "fake-operation", nil)
 			})
 
@@ -331,8 +368,8 @@ var _ = Describe("CheckStep", func() {
 
 			It("propagates span context to delegate", func() {
 				spanContext, _ := fakeDelegate.SaveVersionsArgsForCall(0)
-				traceID := span.SpanContext().TraceIDString()
-				traceParent := spanContext.Get(propagators.TraceparentHeader)
+				traceID := span.SpanContext().TraceID.String()
+				traceParent := spanContext.Get("traceparent")
 				Expect(traceParent).To(ContainSubstring(traceID))
 			})
 		})

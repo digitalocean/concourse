@@ -10,6 +10,7 @@ require (
 	github.com/Azure/go-autorest/autorest v0.10.1 // indirect
 	github.com/Azure/go-autorest/autorest/adal v0.8.3 // indirect
 	github.com/DataDog/datadog-go v3.2.0+incompatible
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v0.11.0
 	github.com/Masterminds/squirrel v1.1.0
 	github.com/Microsoft/hcsshim v0.8.7 // indirect
 	github.com/NYTimes/gziphandler v1.1.1
@@ -45,7 +46,7 @@ require (
 	github.com/gobuffalo/packr v1.13.7
 	github.com/gogo/googleapis v1.3.1 // indirect
 	github.com/gogo/protobuf v1.3.1
-	github.com/golang/groupcache v0.0.0-20191027212112-611e8accdfc9
+	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 	github.com/google/jsonapi v0.0.0-20180618021926-5d047c6bc66b
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gophercloud/gophercloud v0.10.0 // indirect
@@ -61,7 +62,6 @@ require (
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
 	github.com/influxdata/influxdb1-client v0.0.0-20190118215656-f8cdb5d5f175
 	github.com/jessevdk/go-flags v1.4.0
-	github.com/json-iterator/go v1.1.7 // indirect
 	github.com/klauspost/compress v1.9.7
 	github.com/kr/pty v1.1.8
 	github.com/krishicks/yaml-patch v0.0.10
@@ -90,7 +90,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2
 	github.com/skratchdot/open-golang v0.0.0-20160302144031-75fb7ed4208c
 	github.com/square/certstrap v1.1.1
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.6.1
 	github.com/syndtr/gocapability v0.0.0-20180916011248-d98352740cb2 // indirect
 	github.com/tedsuo/ifrit v0.0.0-20180802180643-bea94bb476cc
 	github.com/tedsuo/rata v1.0.1-0.20170830210128-07d200713958
@@ -100,28 +100,26 @@ require (
 	github.com/vito/houdini v1.1.1
 	github.com/vito/twentythousandtonnesofcrudeoil v0.0.0-20180305154709-3b21ad808fcb
 	go.etcd.io/bbolt v1.3.3 // indirect
-	go.opencensus.io v0.22.2 // indirect
-	go.opentelemetry.io/otel v0.2.1
-	go.opentelemetry.io/otel/exporter/trace/jaeger v0.2.1
-	go.opentelemetry.io/otel/exporter/trace/stackdriver v0.2.1
-	golang.org/x/crypto v0.0.0-20200220183623-bac4c82f6975
-	golang.org/x/net v0.0.0-20200506145744-7e3656a0809f // indirect
-	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
-	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
-	golang.org/x/sys v0.0.0-20200509044756-6aff5f38e54f // indirect
-	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
-	google.golang.org/genproto v0.0.0-20191223191004-3caeed10a8bf // indirect
-	google.golang.org/grpc v1.26.0
+	go.opentelemetry.io/otel v0.11.0
+	go.opentelemetry.io/otel/exporter/trace/jaeger v0.2.1 // indirect
+	go.opentelemetry.io/otel/exporter/trace/stackdriver v0.2.1 // indirect
+	go.opentelemetry.io/otel/exporters/trace/jaeger v0.11.0
+	go.opentelemetry.io/otel/sdk v0.11.0
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
+	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
+	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
+	google.golang.org/api v0.32.0 // indirect
+	google.golang.org/grpc v1.32.0 // indirect
 	gopkg.in/asn1-ber.v1 v1.0.0-20181015200546-f715ec2f112d // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/square/go-jose.v2 v2.3.1
 	gopkg.in/yaml.v2 v2.2.8
-	k8s.io/api v0.0.0-20190313235455-40a48860b5ab
-	k8s.io/apimachinery v0.0.0-20190313205120-d7deff9243b1
-	k8s.io/client-go v11.0.0+incompatible
-	k8s.io/kube-openapi v0.0.0-20191107075043-30be4d16710a // indirect
-	k8s.io/utils v0.0.0-20190829053155-3a4a5477acf8 // indirect
-	sigs.k8s.io/yaml v1.1.0
+	k8s.io/api v0.18.8
+	k8s.io/apimachinery v0.18.8
+	k8s.io/client-go v0.18.8
+	sigs.k8s.io/structured-merge-diff v0.0.0-20190525122527-15d366b2352e // indirect
+	sigs.k8s.io/yaml v1.2.0
 )
 
 go 1.13

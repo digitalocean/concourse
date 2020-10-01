@@ -1,14 +1,18 @@
 package db_test
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"time"
 
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
+	"github.com/concourse/concourse/tracing"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"go.opentelemetry.io/otel/api/trace"
+	"go.opentelemetry.io/otel/api/trace/tracetest"
 )
 
 var _ = Describe("Resource", func() {
@@ -334,6 +338,239 @@ var _ = Describe("Resource", func() {
 
 			It("returns a non one row affected error", func() {
 				Expect(enableError).To(Equal(db.NonOneRowAffectedError{0}))
+			})
+		})
+	})
+
+	Describe("SetResourceConfigScope", func() {
+		var pipeline db.Pipeline
+		var resource db.Resource
+		var scope db.ResourceConfigScope
+
+		BeforeEach(func() {
+			config := atc.Config{
+				Resources: atc.ResourceConfigs{
+					{
+						Name:   "some-resource",
+						Type:   defaultWorkerResourceType.Type,
+						Source: atc.Source{"some": "repository"},
+					},
+					{
+						Name:   "some-other-resource",
+						Type:   defaultWorkerResourceType.Type,
+						Source: atc.Source{"some": "other-repository"},
+					},
+				},
+				Jobs: atc.JobConfigs{
+					{
+						Name: "using-resource",
+						PlanSequence: []atc.Step{
+							{
+								Config: &atc.GetStep{
+									Name: "some-resource",
+								},
+							},
+						},
+					},
+					{
+						Name: "not-using-resource",
+						PlanSequence: []atc.Step{
+							{
+								Config: &atc.GetStep{
+									Name: "some-other-resource",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			var err error
+
+			var created bool
+			pipeline, created, err = defaultTeam.SavePipeline(
+				atc.PipelineRef{Name: "some-pipeline-with-two-jobs"},
+				config,
+				0,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(created).To(BeTrue())
+
+			var found bool
+			resource, found, err = pipeline.Resource("some-resource")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(found).To(BeTrue())
+
+			resourceConfig, err := resourceConfigFactory.FindOrCreateResourceConfig(resource.Type(), resource.Source(), atc.VersionedResourceTypes{})
+			Expect(err).ToNot(HaveOccurred())
+
+			scope, err = resourceConfig.FindOrCreateScope(resource)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("associates the resource to the config and scope", func() {
+			Expect(resource.ResourceConfigID()).To(BeZero())
+			Expect(resource.ResourceConfigScopeID()).To(BeZero())
+
+			Expect(resource.SetResourceConfigScope(scope)).To(Succeed())
+
+			_, err := resource.Reload()
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(resource.ResourceConfigID()).To(Equal(scope.ResourceConfig().ID()))
+			Expect(resource.ResourceConfigScopeID()).To(Equal(scope.ID()))
+		})
+
+		It("requests scheduling for downstream jobs", func() {
+			job, found, err := pipeline.Job("using-resource")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+
+			otherJob, found, err := pipeline.Job("not-using-resource")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+
+			requestedSchedule := job.ScheduleRequestedTime()
+			otherRequestedSchedule := otherJob.ScheduleRequestedTime()
+
+			Expect(resource.SetResourceConfigScope(scope)).To(Succeed())
+
+			found, err = job.Reload()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+
+			found, err = otherJob.Reload()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+
+			Expect(job.ScheduleRequestedTime()).Should(BeTemporally(">", requestedSchedule))
+			Expect(otherJob.ScheduleRequestedTime()).Should(Equal(otherRequestedSchedule))
+		})
+	})
+
+	Describe("CheckPlan", func() {
+		var resource db.Resource
+		var resourceTypes db.ResourceTypes
+
+		BeforeEach(func() {
+			var err error
+			var found bool
+			resource, found, err = pipeline.Resource("some-resource")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(found).To(BeTrue())
+
+			resourceTypes, err = pipeline.ResourceTypes()
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("returns a plan which will update the resource", func() {
+			Expect(resource.CheckPlan(atc.Version{"some": "version"}, time.Minute, 10*time.Second, resourceTypes)).To(Equal(atc.CheckPlan{
+				Name:   resource.Name(),
+				Type:   resource.Type(),
+				Source: resource.Source(),
+				Tags:   resource.Tags(),
+
+				FromVersion: atc.Version{"some": "version"},
+
+				Interval: "1m0s",
+				Timeout:  "10s",
+
+				VersionedResourceTypes: resourceTypes.Deserialize(),
+
+				Resource: resource.Name(),
+			}))
+		})
+	})
+
+	Describe("CreateBuild", func() {
+		var ctx context.Context
+		var manuallyTriggered bool
+		var build db.Build
+		var created bool
+
+		BeforeEach(func() {
+			ctx = context.TODO()
+			manuallyTriggered = false
+		})
+
+		JustBeforeEach(func() {
+			var err error
+			build, created, err = defaultResource.CreateBuild(ctx, manuallyTriggered)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("creates a one-off build", func() {
+			Expect(created).To(BeTrue())
+			Expect(build).ToNot(BeNil())
+			Expect(build.PipelineID()).To(Equal(defaultResource.PipelineID()))
+			Expect(build.TeamID()).To(Equal(defaultResource.TeamID()))
+			Expect(build.IsManuallyTriggered()).To(BeFalse())
+		})
+
+		Context("when tracing is configured", func() {
+			var span trace.Span
+
+			BeforeEach(func() {
+				tracing.ConfigureTraceProvider(tracetest.NewProvider())
+
+				ctx, span = tracing.StartSpan(context.Background(), "fake-operation", nil)
+			})
+
+			AfterEach(func() {
+				tracing.Configured = false
+			})
+
+			It("propagates span context", func() {
+				traceID := span.SpanContext().TraceID.String()
+				buildContext := build.SpanContext()
+				traceParent := buildContext.Get("traceparent")
+				Expect(traceParent).To(ContainSubstring(traceID))
+			})
+		})
+
+		Context("when manually triggered", func() {
+			BeforeEach(func() {
+				manuallyTriggered = true
+			})
+
+			It("creates a manually triggered one-off build", func() {
+				Expect(build.IsManuallyTriggered()).To(BeTrue())
+			})
+
+			It("can create another build", func() {
+				anotherBuild, created, err := defaultResource.CreateBuild(ctx, manuallyTriggered)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(created).To(BeTrue())
+				Expect(anotherBuild.ID()).ToNot(Equal(build.ID()))
+			})
+		})
+
+		Context("when not manually triggered", func() {
+			BeforeEach(func() {
+				manuallyTriggered = false
+			})
+
+			It("cannot create another build", func() {
+				anotherBuild, created, err := defaultResource.CreateBuild(ctx, manuallyTriggered)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(created).To(BeFalse())
+				Expect(anotherBuild).To(BeNil())
+			})
+
+			Describe("after the first build completes", func() {
+				It("can create another build after deleting the completed build", func() {
+					Expect(build.Finish(db.BuildStatusSucceeded)).To(Succeed())
+
+					anotherBuild, created, err := defaultResource.CreateBuild(ctx, manuallyTriggered)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(created).To(BeTrue())
+					Expect(anotherBuild.ID()).ToNot(Equal(build.ID()))
+
+					found, err := build.Reload()
+					Expect(err).ToNot(HaveOccurred())
+					Expect(found).To(BeFalse())
+				})
 			})
 		})
 	})
@@ -1508,9 +1745,9 @@ var _ = Describe("Resource", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			err = resourceScope.SaveVersions(nil, []atc.Version{
-				atc.Version{"version": "v1"},
-				atc.Version{"version": "v2"},
-				atc.Version{"version": "v3"},
+				{"version": "v1"},
+				{"version": "v2"},
+				{"version": "v3"},
 			})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -1716,9 +1953,9 @@ var _ = Describe("Resource", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				err = resourceScope.SaveVersions(nil, []atc.Version{
-					atc.Version{"version": "v1"},
-					atc.Version{"version": "v2"},
-					atc.Version{"version": "v3"},
+					{"version": "v1"},
+					{"version": "v2"},
+					{"version": "v3"},
 				})
 				Expect(err).ToNot(HaveOccurred())
 

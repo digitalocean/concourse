@@ -19,7 +19,7 @@ import (
 	"github.com/concourse/concourse/vars"
 	"github.com/onsi/gomega/gbytes"
 	"go.opentelemetry.io/otel/api/trace"
-	"go.opentelemetry.io/otel/api/trace/testtrace"
+	"go.opentelemetry.io/otel/api/trace/tracetest"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -42,6 +42,7 @@ var _ = Describe("GetStep", func() {
 		fakeResourceCache        *dbfakes.FakeUsedResourceCache
 
 		fakeDelegate *execfakes.FakeGetDelegate
+		spanCtx      context.Context
 
 		getPlan *atc.GetPlan
 
@@ -165,7 +166,33 @@ var _ = Describe("GetStep", func() {
 
 	It("calls RunGetStep with the correct ctx", func() {
 		actualCtx, _, _, _, _, _, _, _, _, _, _, _ := fakeClient.RunGetStepArgsForCall(0)
-		Expect(actualCtx).To(Equal(ctx))
+		Expect(actualCtx).To(Equal(spanCtx))
+	})
+
+	Context("when tracing is enabled", func() {
+		var buildSpan trace.Span
+
+		BeforeEach(func() {
+			tracing.ConfigureTraceProvider(tracetest.NewProvider())
+
+			spanCtx, buildSpan = tracing.StartSpan(ctx, "build", nil)
+			fakeDelegate.StartSpanReturns(spanCtx, buildSpan)
+		})
+
+		AfterEach(func() {
+			tracing.Configured = false
+		})
+
+		It("propagates span context to the worker client", func() {
+			actualCtx, _, _, _, _, _, _, _, _, _, _, _ := fakeClient.RunGetStepArgsForCall(0)
+			Expect(actualCtx).To(Equal(spanCtx))
+		})
+
+		It("populates the TRACEPARENT env var", func() {
+			_, _, _, actualContainerSpec, _, _, _, _, _, _, _, _ := fakeClient.RunGetStepArgsForCall(0)
+
+			Expect(actualContainerSpec.Env).To(ContainElement(MatchRegexp(`TRACEPARENT=.+`)))
+		})
 	})
 
 	It("calls RunGetStep with the correct ContainerOwner", func() {
@@ -260,14 +287,14 @@ var _ = Describe("GetStep", func() {
 		var buildSpan trace.Span
 
 		BeforeEach(func() {
-			tracing.ConfigureTraceProvider(testTraceProvider{})
+			tracing.ConfigureTraceProvider(tracetest.NewProvider())
 			ctx, buildSpan = tracing.StartSpan(ctx, "build", nil)
 		})
 
 		It("propagates span context to the worker client", func() {
 			ctx, _, _, _, _, _, _, _, _, _, _, _ := fakeClient.RunGetStepArgsForCall(0)
-			span, ok := tracing.FromContext(ctx).(*testtrace.Span)
-			Expect(ok).To(BeTrue(), "no testtrace.Span in context")
+			span, ok := tracing.FromContext(ctx).(*tracetest.Span)
+			Expect(ok).To(BeTrue(), "no tracetest.Span in context")
 			Expect(span.ParentSpanID()).To(Equal(buildSpan.SpanContext().SpanID))
 		})
 
@@ -310,7 +337,7 @@ var _ = Describe("GetStep", func() {
 
 		It("registers the resulting artifact in the RunState.ArtifactRepository", func() {
 			artifact, found := artifactRepository.ArtifactFor(build.ArtifactName(getPlan.Name))
-			Expect(artifact).To(Equal(runtime.GetArtifact{"some-volume-handle"}))
+			Expect(artifact).To(Equal(runtime.GetArtifact{VolumeHandle: "some-volume-handle"}))
 			Expect(found).To(BeTrue())
 		})
 

@@ -1769,8 +1769,8 @@ var _ = Describe("Team", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			err = rc.SaveVersions(nil, []atc.Version{
-				atc.Version{"version": "v1"},
-				atc.Version{"version": "v2"},
+				{"version": "v1"},
+				{"version": "v2"},
 			})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -1850,8 +1850,8 @@ var _ = Describe("Team", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			err = rc.SaveVersions(nil, []atc.Version{
-				atc.Version{"version": "v1"},
-				atc.Version{"version": "v2"},
+				{"version": "v1"},
+				{"version": "v2"},
 			})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -2365,9 +2365,9 @@ var _ = Describe("Team", func() {
 					Expect(err).ToNot(HaveOccurred())
 
 					err = resourceScope.SaveVersions(nil, []atc.Version{
-						atc.Version{"version": "v1"},
-						atc.Version{"version": "v2"},
-						atc.Version{"version": "v3"},
+						{"version": "v1"},
+						{"version": "v2"},
+						{"version": "v3"},
 					})
 					Expect(err).ToNot(HaveOccurred())
 

@@ -15,9 +15,8 @@ import (
 	"github.com/concourse/concourse/tracing"
 	"github.com/concourse/concourse/vars"
 	"github.com/concourse/concourse/vars/varsfakes"
-	"go.opentelemetry.io/otel/api/propagators"
 	"go.opentelemetry.io/otel/api/trace"
-	"go.opentelemetry.io/otel/api/trace/testtrace"
+	"go.opentelemetry.io/otel/api/trace/tracetest"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -240,14 +239,14 @@ var _ = Describe("CheckStep", func() {
 				var buildSpan trace.Span
 
 				BeforeEach(func() {
-					tracing.ConfigureTraceProvider(testTraceProvider{})
+					tracing.ConfigureTraceProvider(tracetest.NewProvider())
 					ctx, buildSpan = tracing.StartSpan(ctx, "lidar", nil)
 				})
 
 				It("propagates span context to the worker client", func() {
 					ctx, _, _, _, _, _, _, _, _, _ := fakeClient.RunCheckStepArgsForCall(0)
-					span, ok := tracing.FromContext(ctx).(*testtrace.Span)
-					Expect(ok).To(BeTrue(), "no testtrace.Span in context")
+					span, ok := tracing.FromContext(ctx).(*tracetest.Span)
+					Expect(ok).To(BeTrue(), "no tracetest.Span in context")
 					Expect(span.ParentSpanID()).To(Equal(buildSpan.SpanContext().SpanID))
 				})
 
@@ -321,7 +320,7 @@ var _ = Describe("CheckStep", func() {
 			var span trace.Span
 
 			BeforeEach(func() {
-				tracing.ConfigureTraceProvider(&tracing.TestTraceProvider{})
+				tracing.ConfigureTraceProvider(tracetest.NewProvider())
 				ctx, span = tracing.StartSpan(context.Background(), "fake-operation", nil)
 			})
 
@@ -331,8 +330,8 @@ var _ = Describe("CheckStep", func() {
 
 			It("propagates span context to delegate", func() {
 				spanContext, _ := fakeDelegate.SaveVersionsArgsForCall(0)
-				traceID := span.SpanContext().TraceIDString()
-				traceParent := spanContext.Get(propagators.TraceparentHeader)
+				traceID := span.SpanContext().TraceID.String()
+				traceParent := spanContext.Get("traceparent")
 				Expect(traceParent).To(ContainSubstring(traceID))
 			})
 		})

@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
 	"go.opentelemetry.io/otel/api/trace"
-	"go.opentelemetry.io/otel/api/trace/testtrace"
+	"go.opentelemetry.io/otel/api/trace/tracetest"
 
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
@@ -322,14 +322,14 @@ var _ = Describe("PutStep", func() {
 		var buildSpan trace.Span
 
 		BeforeEach(func() {
-			tracing.ConfigureTraceProvider(testTraceProvider{})
+			tracing.ConfigureTraceProvider(tracetest.NewProvider())
 			ctx, buildSpan = tracing.StartSpan(ctx, "build", nil)
 		})
 
 		It("propagates span context to the worker client", func() {
 			ctx, _, _, _, _, _, _, _, _, _, _ := fakeClient.RunPutStepArgsForCall(0)
-			span, ok := tracing.FromContext(ctx).(*testtrace.Span)
-			Expect(ok).To(BeTrue(), "no testtrace.Span in context")
+			span, ok := tracing.FromContext(ctx).(*tracetest.Span)
+			Expect(ok).To(BeTrue(), "no tracetest.Span in context")
 			Expect(span.ParentSpanID()).To(Equal(buildSpan.SpanContext().SpanID))
 		})
 
